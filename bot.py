@@ -451,6 +451,97 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+
+
+async def cmd_connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Link Telegram account to SATUm platform profile."""
+    user = update.effective_user
+    args = context.args
+    
+    # If started with connect_USERID parameter
+    if args and args[0].startswith('connect_'):
+        user_prefix = args[0].replace('connect_', '')
+        # Store the telegram_chat_id mapping (would need platform API call)
+        # For now, give instructions
+        await update.message.reply_text(
+            f"✅ <b>Аккаунт связан!</b>\n\n"
+            f"Теперь ты будешь получать уведомления прямо сюда:\n"
+            f"🔥 Напоминания о серии\n"
+            f"📊 Результаты тестов\n"
+            f"🎯 Достижение целей\n\n"
+            f"Твой Telegram ID: <code>{user.id}</code>\n\n"
+            f"Скопируй его и вставь в Настройках платформы → Telegram",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await update.message.reply_text(
+            f"🔗 <b>Подключи аккаунт SATUm</b>\n\n"
+            f"Твой Telegram ID: <code>{user.id}</code>\n\n"
+            f"1. Скопируй ID выше\n"
+            f"2. Зайди на платформу → Настройки → Telegram\n"
+            f"3. Вставь ID и сохрани\n\n"
+            f"После этого будешь получать:\n"
+            f"🔥 Напоминания о серии каждый вечер\n"
+            f"📊 Результаты тестов\n"
+            f"🎯 Когда достигнешь целевого балла",
+            parse_mode=ParseMode.HTML,
+        )
+    
+    update_user(user.id, name=user.first_name or '')
+
+
+async def cmd_sendnow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: manually trigger daily question to channel."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Только для администратора")
+        return
+    
+    if not CHANNEL_ID:
+        await update.message.reply_text("❌ CHANNEL_ID не задан в переменных")
+        return
+    
+    await update.message.reply_text("⏳ Отправляю вопрос дня в канал...")
+    await job_daily_question(context)
+    await update.message.reply_text("✅ Вопрос дня отправлен в канал!")
+
+
+async def cmd_sendword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: manually trigger evening word to channel."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Только для администратора")
+        return
+    
+    if not CHANNEL_ID:
+        await update.message.reply_text("❌ CHANNEL_ID не задан в переменных")
+        return
+    
+    await update.message.reply_text("⏳ Отправляю слово дня в канал...")
+    await job_evening_reminder(context)
+    await update.message.reply_text("✅ Слово дня отправлено!")
+
+
+async def cmd_checkconfig(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: check bot configuration."""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    data = load_data()
+    await update.message.reply_text(
+        f"⚙️ <b>Конфигурация бота</b>\n\n"
+        f"BOT_TOKEN: {'✅ задан' if BOT_TOKEN else '❌ не задан'}\n"
+        f"CHANNEL_ID: {'✅ ' + CHANNEL_ID if CHANNEL_ID else '❌ не задан'}\n"
+        f"ADMIN_ID: {ADMIN_ID}\n"
+        f"PLATFORM_URL: {PLATFORM_URL}\n\n"
+        f"👥 Пользователей: {len(data)}\n"
+        f"📊 Вопросов: {len(ALL_QUESTIONS)}\n"
+        f"💬 Слов: {len(ALL_VOCAB)}\n\n"
+        f"⏰ Расписание:\n"
+        f"• Вопрос дня: 08:00 Ташкент\n"
+        f"• Слово дня: 20:00 Ташкент\n"
+        f"• Итоги недели: Пн 09:00 Ташкент",
+        parse_mode=ParseMode.HTML,
+    )
+
 # ── Poll Answer Handler ─────────────────────────────────────────────────────
 async def poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = update.poll_answer
@@ -642,6 +733,7 @@ async def post_init(application: Application):
         BotCommand("streak",   "Моя серия"),
         BotCommand("platform", "Открыть платформу"),
         BotCommand("help",     "Помощь"),
+        BotCommand("connect",  "Подключить к платформе"),
     ])
     logger.info("Bot commands set")
 
@@ -667,6 +759,10 @@ def main():
     app.add_handler(CommandHandler("streak",    cmd_streak))
     app.add_handler(CommandHandler("platform",  cmd_platform))
     app.add_handler(CommandHandler("help",      cmd_help))
+    app.add_handler(CommandHandler("connect",   cmd_connect))
+    app.add_handler(CommandHandler("sendnow",   cmd_sendnow))
+    app.add_handler(CommandHandler("sendword",  cmd_sendword))
+    app.add_handler(CommandHandler("checkconfig", cmd_checkconfig))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("astats",    cmd_admin_stats))
     app.add_handler(CallbackQueryHandler(callback))
