@@ -170,16 +170,27 @@ async def send_question_poll(
     # Telegram poll question max 300 chars
     full_question = full_question[:298]
     
-    msg = await context.bot.send_poll(
-        chat_id=chat_id,
-        question=full_question,
-        options=[f"{chr(65+i)}. {c}" for i, c in enumerate(choices)],
-        type='quiz',
-        correct_option_id=int(q['a']),
-        explanation=f"✅ Правильный ответ: {chr(65+int(q['a']))}. {choices[int(q['a'])]}",
-        is_anonymous=False,
-        allows_multiple_answers=False,
-    )
+    try:
+        msg = await context.bot.send_poll(
+            chat_id=chat_id,
+            question=full_question,
+            options=[f"{chr(65+i)}. {c}" for i, c in enumerate(choices)],
+            type='quiz',
+            correct_option_id=int(q['a']),
+            explanation=f"✅ Правильный ответ: {chr(65+int(q['a']))}. {choices[int(q['a'])]}",
+            is_anonymous=False,
+            allows_multiple_answers=False,
+        )
+    except Exception:
+        # Fallback: send as regular poll if quiz fails
+        msg = await context.bot.send_poll(
+            chat_id=chat_id,
+            question=full_question,
+            options=[f"{chr(65+i)}. {c}" for i, c in enumerate(choices)],
+            type='regular',
+            is_anonymous=False,
+            allows_multiple_answers=False,
+        )
     
     poll_id = msg.poll.id
     active_polls[poll_id] = {
@@ -402,24 +413,26 @@ async def cmd_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    
     data = q.data
     user = update.effective_user
-    
-    if data == "q_random":
-        question = get_random_question()
-        prefix = f"{'📐 Math' if question['s']=='m' else '📖 Reading'} · {question['t']}"
-        await send_question_poll(context, q.message.chat_id, question, user.id, prefix)
-    
-    elif data == "q_math":
-        question = get_random_question('math')
-        await send_question_poll(context, q.message.chat_id, question, user.id, f"📐 Math · {question['t']}")
-    
-    elif data == "q_reading":
-        question = get_random_question('reading')
-        await send_question_poll(context, q.message.chat_id, question, user.id, f"📖 Reading · {question['t']}")
-    
-    elif data == "stats":
+
+    if data in ("q_random", "q_math", "q_reading"):
+        try:
+            if data == "q_random":
+                question = get_random_question()
+            elif data == "q_math":
+                question = get_random_question('math')
+            else:
+                question = get_random_question('reading')
+            subj = '📐 Math' if question['s'] == 'm' else '📖 Reading'
+            topic = question.get('t', 'SAT')
+            await send_question_poll(context, q.message.chat_id, question, user.id, f"{subj} · {topic}")
+        except Exception as e:
+            logger.error(f"Poll error: {e}")
+            await q.message.reply_text(f"❌ Не удалось отправить вопрос: {e}")
+        return
+
+    if data == "stats":
         u = get_user(user.id)
         total = u['total_answered']
         correct = u['correct']
@@ -433,24 +446,24 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<code>[{bar}]</code>",
             parse_mode=ParseMode.HTML,
         )
-    
-    elif data == "word":
+        return
+
+    if data == "word":
         word = get_daily_word(today_seed())
         await q.message.reply_text(
             f"💬 <b>{word['w']}</b>\n\n{word['d']}"
             + (f"\n\n<i>«{word['e']}»</i>" if word.get('e') else ""),
             parse_mode=ParseMode.HTML,
         )
-    
-    elif data == "word_random":
+        return
+
+    if data == "word_random":
         word = random.choice(ALL_VOCAB)
         await q.message.reply_text(
             f"💬 <b>{word['w']}</b>\n\n{word['d']}"
             + (f"\n\n<i>«{word['e']}»</i>" if word.get('e') else ""),
             parse_mode=ParseMode.HTML,
         )
-
-
 
 
 async def cmd_connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
